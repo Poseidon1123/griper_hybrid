@@ -43,7 +43,12 @@ griper_hybrid/
 ├── docs/
 │   └── communication_protocol.md
 ├── firmware/
-│   └── README.md
+│   ├── README.md
+│   └── app/
+│       ├── gripper_control.c/.h
+│       ├── encos_motor.c/.h
+│       ├── safety.c/.h
+│       └── serial_protocol.c/.h
 ├── gui/
 │   ├── main.py
 │   ├── serial_worker.py
@@ -52,6 +57,59 @@ griper_hybrid/
 ├── requirements.txt
 └── README.md
 ```
+
+## Run the GUI on Windows
+
+Clone the repository and enter the project directory:
+
+```bash
+git clone https://github.com/Poseidon1123/griper_hybrid.git
+cd griper_hybrid
+```
+
+Create a Python virtual environment:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Edit the serial port in:
+
+```text
+config/gripper_config.yaml
+```
+
+For example:
+
+```yaml
+serial:
+  port: "COM5"
+  baudrate: 115200
+```
+
+Run the GUI:
+
+```bash
+python gui/main.py
+```
+
+The GUI can be opened before STM32 is connected. Motion buttons remain disabled until the serial connection is established.
+
+## STM32 workflow
+
+1. Create an STM32CubeIDE project for the actual STM32F103 board/MCU.
+2. Configure UART, CAN1, GPIO safety inputs, and a periodic timer.
+3. Copy/integrate the modules under `firmware/app/` into the CubeIDE project.
+4. Verify PC <-> STM32 text communication first.
+5. Verify raw CAN communication without motion.
+6. Only after the official EC-A4310-P2-36 CAN protocol is confirmed, implement the functions in `encos_motor.c`.
 
 ## Development milestones
 
