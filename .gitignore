@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs / runtime
+*.log
+*.tmp
+
+# STM32CubeIDE / build outputs
+Debug/
+Release/
+*.elf
+*.hex
+*.bin
+*.map
+
+# Local config overrides
+config/gripper_config.local.yaml
