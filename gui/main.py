@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 import yaml
-from PyQt5.QtCore import QThread
+from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QApplication,
     QDoubleSpinBox,
@@ -27,6 +27,8 @@ CONFIG_PATH = ROOT_DIR / "config" / "gripper_config.yaml"
 
 
 class GripperWindow(QMainWindow):
+    udp_command_received = pyqtSignal(str, object)
+
     def __init__(self):
         super().__init__()
         self.config = self._load_config()
@@ -38,6 +40,7 @@ class GripperWindow(QMainWindow):
         self.resize(720, 520)
         self._build_ui()
         self._set_connected(False)
+        self.udp_command_received.connect(self._handle_udp_command)
 
         if self.config.get("udp", {}).get("enable", False):
             self._start_udp()
@@ -236,7 +239,7 @@ class GripperWindow(QMainWindow):
     def _start_udp(self):
         cfg = self.config["udp"]
         self.udp_server = UDPServer(
-            cfg["bind_ip"], int(cfg["port"]), self._on_udp_command
+            cfg["bind_ip"], int(cfg["port"]), self._on_udp_datagram
         )
         try:
             self.udp_server.start()
@@ -246,7 +249,11 @@ class GripperWindow(QMainWindow):
         except OSError as exc:
             self._append_log(f"UDP ERROR: {exc}")
 
-    def _on_udp_command(self, command, address):
+    def _on_udp_datagram(self, command, address):
+        # This callback runs in the UDP worker thread. Forward work to Qt thread.
+        self.udp_command_received.emit(command, address)
+
+    def _handle_udp_command(self, command, address):
         # UDP is disabled by default. Command format will be finalized later.
         self._append_log(f"UDP {address}: {command}")
         self.send_command(command)
