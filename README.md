@@ -1,129 +1,156 @@
 # griper_hybrid
 
-Hybrid gripper control project using STM32F103 + CAN + ENCOS EC-A4310-P2-36, with a PyQt5 GUI on the PC.
+Control project for a hybrid two-finger gripper using:
 
-## Architecture
+- ENCOS EC-A4310-P2-36 joint motor
+- Waveshare USB-CAN-A
+- Classic CAN at 1 Mbit/s
+- Python + PyQt5 HMI
+
+The current prototype architecture is:
 
 ```text
-Robot main controller
-        |
-        | UDP text commands (future integration)
-        v
-+------------------------+
-| PyQt5 GUI on PC        |
-| - reads YAML config    |
-| - sends serial cmds    |
-| - displays telemetry   |
-+-----------+------------+
-            | USB-UART
-            v
-+------------------------+
-| STM32F103 firmware     |
-| - real-time loop       |
-| - safety limits        |
-| - gripper state        |
-| - CAN communication    |
-+-----------+------------+
-            | CAN
-            v
-+------------------------+
-| EC-A4310-P2-36         |
-+-----------+------------+
+Robot main controller (future UDP)
             |
             v
-         Gripper
++---------------------------+
+| PyQt5 HMI on Windows PC   |
+| - parameters / YAML       |
+| - telemetry               |
+| - grip state machine      |
++-------------+-------------+
+              | USB serial protocol
+              v
++---------------------------+
+| Waveshare USB-CAN-A       |
++-------------+-------------+
+              | CAN 1 Mbps
+              v
++---------------------------+
+| EC-A4310-P2-36            |
++-------------+-------------+
+              |
+              v
+           Gripper
 ```
 
-## Project structure
+`firmware/` is retained for the later STM32 real-time version. The current HMI controls the motor directly through USB-CAN-A.
+
+## Features
+
+- automatic COM-port discovery
+- motor CAN-ID discovery / Q&A mode
+- actual motor position feedback
+- actual current feedback
+- motor temperature and fault display
+- relative jog
+- absolute position command
+- OPEN / RELEASE command
+- automatic `CLOSE -> CONTACT -> HOLD`
+- adjustable `I_close`, `I_hold`, contact-current threshold, speed and preload
+- configuration stored in `config/gripper_config.yaml`
+- CAN control runs in a worker thread so the PyQt5 GUI stays responsive
+
+## Automatic grip logic
+
+The controller does not declare contact from current alone. Contact is confirmed when:
+
+1. actual current exceeds `contact_current_a`, and
+2. motor position changes by less than `stall_move_deg` over `stall_window_s`, and
+3. the condition is confirmed for several consecutive samples.
+
+After contact:
+
+```text
+CLOSING
+   |
+   | contact detected
+   v
+HOLD
+```
+
+The HOLD state keeps a small position preload while reducing the servo-position current threshold to `i_hold_a`.
+
+> `i_hold_a` is a current threshold/limit in servo-position mode. Actual current is not guaranteed to equal exactly `i_hold_a`.
+
+## Install
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+## Run HMI
+
+From the repository root:
+
+```bash
+python run_hmi.py
+```
+
+Then:
+
+1. Select `USB-SERIAL CH340` (the Waveshare USB-CAN-A COM port).
+2. Click **Connect**.
+3. Verify position feedback.
+4. Use small Jog commands first to confirm the closing direction.
+5. Set **Close direction** to `+1` or `-1`.
+6. Click **Apply + Save YAML**.
+7. Test **GRIP / AUTO HOLD** with a light object first.
+
+## Main project structure
 
 ```text
 griper_hybrid/
 ├── config/
 │   └── gripper_config.yaml
-├── docs/
-│   └── communication_protocol.md
+├── controller/
+│   ├── __init__.py
+│   └── gripper_controller.py
+├── drivers/
+│   ├── __init__.py
+│   ├── ec_a4310.py
+│   └── waveshare_usb_can.py
 ├── firmware/
-│   ├── README.md
-│   └── app/
-│       ├── gripper_control.c/.h
-│       ├── encos_motor.c/.h
-│       ├── safety.c/.h
-│       └── serial_protocol.c/.h
+│   └── ...
 ├── gui/
+│   ├── __init__.py
 │   ├── main.py
-│   ├── serial_worker.py
-│   └── udp_server.py
-├── .gitignore
+│   ├── serial_worker.py       # legacy STM32 path, kept for later
+│   └── udp_server.py          # future robot integration
 ├── requirements.txt
-└── README.md
+└── run_hmi.py
 ```
 
-## Run the GUI on Windows
+## Important configuration
 
-Clone the repository and enter the project directory:
-
-```bash
-git clone https://github.com/Poseidon1123/griper_hybrid.git
-cd griper_hybrid
-```
-
-Create a Python virtual environment:
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Edit the serial port in:
-
-```text
-config/gripper_config.yaml
-```
-
-For example:
+`config/gripper_config.yaml`:
 
 ```yaml
-serial:
-  port: "COM5"
-  baudrate: 115200
+gripper:
+  close_direction: -1
+  max_close_travel_deg: 90.0
+  open_release_delta_deg: 15.0
+
+grip:
+  close_speed_rpm: 2.0
+  i_close_a: 1.2
+  i_hold_a: 0.8
+  contact_current_a: 0.6
+  preload_deg: 2.0
+
+safety:
+  absolute_current_limit_a: 3.0
+  max_motor_temp_c: 70.0
 ```
 
-Run the GUI:
+These are prototype values, not guaranteed values for lifting a 3 kg object. Calibrate current/force against the real mechanism, finger friction, geometry and thermal behavior.
 
-```bash
-python gui/main.py
-```
+## Safety notes
 
-The GUI can be opened before STM32 is connected. Motion buttons remain disabled until the serial connection is established.
-
-## STM32 workflow
-
-1. Create an STM32CubeIDE project for the actual STM32F103 board/MCU.
-2. Configure UART, CAN1, GPIO safety inputs, and a periodic timer.
-3. Copy/integrate the modules under `firmware/app/` into the CubeIDE project.
-4. Verify PC <-> STM32 text communication first.
-5. Verify raw CAN communication without motion.
-6. Only after the official EC-A4310-P2-36 CAN protocol is confirmed, implement the functions in `encos_motor.c`.
-
-## Development milestones
-
-1. Verify PC <-> STM32 serial communication.
-2. Configure STM32 CAN and verify raw CAN frames.
-3. Confirm the official CAN protocol for EC-A4310-P2-36.
-4. Implement motor enable/disable and feedback readout.
-5. Implement position control.
-6. Map motor position to gripper width (0-80 mm target range).
-7. Add software safety limits and communication watchdog.
-8. Connect the PyQt5 GUI to STM32.
-9. Load/edit parameters from YAML.
-10. Add UDP integration with the robot main controller.
-
-## Important safety note
-
-The EC-A4310 CAN frame format must be verified from the correct ENCOS manual/protocol before sending motion commands. Placeholder CAN IDs or payloads must not be used on the real motor.
+- Confirm the motor closing direction with a small jog before automatic gripping.
+- Set `max_close_travel_deg` to a mechanically safe value.
+- Start with light objects and low current.
+- STOP ends the command stream; when HOLD is active, stopping may release the object.
+- PC + Windows + USB-CAN is not hard real-time. For a final real-time controller, move the fast safety/control loop to STM32 and keep the HMI on the PC.
