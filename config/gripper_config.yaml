@@ -1,42 +1,55 @@
 project:
-  name: "griper_hybrid"
-  version: "0.1.0"
+  name: griper_hybrid
+  version: 0.2.0
 
 motor:
-  model: "EC-A4310-P2-36"
+  model: EC-A4310-P2-36
+  # Set null/0 to auto-discover through CAN ID 0x7FF.
   can_id: 1
   can_baudrate: 1000000
-  protocol_verified: false
 
-# Gripper mechanical limits. These values are initial targets and must be
-# calibrated on the real mechanism before full-power operation.
-gripper:
-  width_min_mm: 0.0
-  width_max_mm: 80.0
-  default_width_mm: 80.0
-  velocity_max_mm_s: 20.0
-  force_max_n: 100.0
+usb_can:
+  model: Waveshare USB-CAN-A
+  serial_baudrate: 2000000
+  serial_timeout_s: 0.03
 
 controller:
-  loop_hz: 1000
-  kp: 10.0
-  ki: 0.0
-  kd: 0.5
+  # PC/Windows loop; this is not hard real-time.
+  loop_hz: 20.0
+
+# Mechanical direction and travel must be calibrated on the real gripper.
+gripper:
+  close_direction: -1
+  max_close_travel_deg: 90.0
+  open_release_delta_deg: 15.0
+
+# Normal manual/position motion.
+motion:
+  speed_rpm: 2.0
+  current_limit_a: 0.5
+  position_tolerance_deg: 0.10
+
+# Automatic CLOSE -> CONTACT -> HOLD parameters.
+grip:
+  close_speed_rpm: 2.0
+  i_close_a: 1.2
+  i_hold_a: 0.8
+  contact_current_a: 0.6
+  preload_deg: 2.0
+  stall_window_s: 0.30
+  stall_move_deg: 0.15
+  min_travel_before_contact_deg: 0.50
+  min_time_before_contact_s: 0.35
+  contact_confirm_count: 3
 
 safety:
-  position_limit_enable: true
-  velocity_limit_enable: true
-  torque_limit_enable: true
-  communication_watchdog_enable: true
-  communication_timeout_ms: 200
-  require_motor_protocol_verified: true
-
-serial:
-  port: "COM5"
-  baudrate: 115200
-  timeout_s: 0.05
+  # Software guard for the current parameters exposed by this project.
+  # Increase only after validating the mechanism and thermal behavior.
+  absolute_current_limit_a: 3.0
+  max_motor_temp_c: 70.0
+  close_timeout_s: 20.0
 
 udp:
   enable: false
-  bind_ip: "0.0.0.0"
+  bind_ip: 0.0.0.0
   port: 5005
